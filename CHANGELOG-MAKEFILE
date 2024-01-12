@@ -1,0 +1,46 @@
+CHANGELOG_VERSION=3.x.y.z
+CHANGELOG_FOLDER=unreleased
+changelog-generate:
+	@rm -f changelog/$(CHANGELOG_FOLDER)/$(CHANGELOG_VERSION).md
+	@touch changelog/$(CHANGELOG_FOLDER)/$(CHANGELOG_VERSION).md
+	@if [ -d "changelog/$(CHANGELOG_FOLDER)/kong" ]; then \
+		changelog --debug generate \
+			--repo-path . \
+			--changelog-paths changelog/$(CHANGELOG_FOLDER)/kong \
+			--title Kong \
+			--github-issue-repo Kong/kong \
+			--github-api-repo Kong/kong-ee \
+			--with-jiras \
+			>> changelog/$(CHANGELOG_FOLDER)/$(CHANGELOG_VERSION).md; \
+    fi
+	@if [ -d "changelog/$(CHANGELOG_FOLDER)/kong-ee" ]; then \
+		changelog --debug generate \
+			--repo-path . \
+			--changelog-paths changelog/$(CHANGELOG_FOLDER)/kong-ee \
+			--title Kong-Enterprise \
+			--github-issue-repo Kong/kong-ee \
+			--github-api-repo Kong/kong-ee \
+			--with-jiras \
+			>> changelog/$(CHANGELOG_FOLDER)/$(CHANGELOG_VERSION).md; \
+    fi
+	@if [ -d "changelog/$(CHANGELOG_FOLDER)/kong-manager-ee" ]; then \
+		changelog --debug generate \
+			--repo-path . \
+			--changelog-paths changelog/$(CHANGELOG_FOLDER)/kong-manager-ee \
+			--title Kong-Manager-Enterprise \
+			--github-issue-repo Kong/kong-manager-ee \
+			--github-api-repo Kong/kong-ee \
+			--with-jiras \
+			>> changelog/$(CHANGELOG_FOLDER)/$(CHANGELOG_VERSION).md; \
+    fi
+	@if [ -d "changelog/$(CHANGELOG_FOLDER)/kong-portal" ]; then \
+		changelog --debug generate \
+			--repo-path . \
+			--changelog-paths changelog/$(CHANGELOG_FOLDER)/kong-manager-ee \
+			--title Kong-Manager-Enterprise \
+			--github-issue-repo Kong/kong-manager-ee \
+			--github-api-repo Kong/kong-ee \
+			--with-jiras \
+			>> changelog/$(CHANGELOG_FOLDER)/$(CHANGELOG_VERSION).md; \
+    fi
+	@echo "Successfully genreate changelog changelog/$(CHANGELOG_FOLDER)/$(CHANGELOG_VERSION).md"
