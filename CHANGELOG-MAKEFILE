@@ -36,9 +36,9 @@ changelog-generate:
 	@if [ -d "changelog/$(CHANGELOG_FOLDER)/kong-portal" ]; then \
 		changelog --debug generate \
 			--repo-path . \
-			--changelog-paths changelog/$(CHANGELOG_FOLDER)/kong-manager-ee \
-			--title Kong-Manager-Enterprise \
-			--github-issue-repo Kong/kong-manager-ee \
+			--changelog-paths changelog/$(CHANGELOG_FOLDER)/kong-portal \
+			--title Kong-Portal \
+			--github-issue-repo Kong/kong-portal-templates \
 			--github-api-repo Kong/kong-ee \
 			--with-jiras \
 			>> changelog/$(CHANGELOG_FOLDER)/$(CHANGELOG_VERSION).md; \
