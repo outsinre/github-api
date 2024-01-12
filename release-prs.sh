@@ -215,9 +215,9 @@ function main () {
     check_changelog "$prs_file"
 
     printf '%s\n' \
-           "commits: $commits_file" \
-           "pull requests: $prs_file" \
-           "pull requests without changelog: $prs_no_changelog_file" \
+           "Commits: $commits_file" \
+           "Pull Requests: $prs_file" \
+           "Pull Requests without changelog: $prs_no_changelog_file" \
            "" "Remeber to remove $out_dir"
 
     trap "" EXIT
