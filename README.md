@@ -1,12 +1,45 @@
-# Retrieve PRs
+# Clone This Repo
 
-Use GitHub REST API to retrieve commits, PRs and PRs without changelog between two arbitrary revisions.
+Clone this repo and add it to environment variable `PATH`.
 
 ```bash
-~ $ chmod +x verify-changelog.sh
-~ $ ./verify-changelog.sh -h
+~ $ git clone git@github.com:outsinre/release-helper.git
+~ $ cd release-helper
+~ $ chmod +x verify-changelog
 
-~ $ ./verify-changelog.sh --org-repo kong/kong-ee --base-commit 2.8.4.5 --head-commit next/2.8.x.x
+~ $ PATH="$(realpath .):$PATH"
+```
+
+# Generate Changelog
+
+Get into the local repo directory, and run commands below.
+
+## Generate EE changelog
+
+```bash
+~ $ pwd
+/Users/zachary/workspace/kong-ee
+
+~ $ make -f ~/workspace/release-helper/Makefile CHANGELOG_VERSION=3.6.0.0 generate-ee
+```
+
+## Generate CE changelog
+
+```bash
+~ $ pwd
+/Users/zachary/workspace/kong
+
+~ $ make -f ~/workspace/release-helper/Makefile CHANGELOG_VERSION=3.6.0 generate-ce
+```
+
+# Retrieve PRs
+
+Given two arbitrary revisions, list commits, PRs and PRs without changelog.
+
+```bash
+~ $ verify-changelog -h
+
+~ $ verify-changelog --org-repo kong/kong-ee --base-commit 2.8.4.5 --head-commit next/2.8.x.x
 Org Repo: kong/kong-ee
 Base Commit: 2.8.4.5
 Head Commit: next/2.8.x.x
