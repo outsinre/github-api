@@ -12,13 +12,13 @@ Clone this repo and add it to environment variable `PATH`.
 
 # Generate Changelog
 
-Get into the local repo directory, and run commands below.
-
 Enure `golang` is available on your local system.
 
 ```bash
 ~ $ go env
 ```
+
+Get into the local repo directory, and run commands below.
 
 ## Generate EE changelog
 
