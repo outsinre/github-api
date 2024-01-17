@@ -14,6 +14,12 @@ Clone this repo and add it to environment variable `PATH`.
 
 Get into the local repo directory, and run commands below.
 
+Enure `golang` is available on your local system.
+
+```bash
+~ $ go env
+```
+
 ## Generate EE changelog
 
 ```bash
@@ -21,6 +27,13 @@ Get into the local repo directory, and run commands below.
 /Users/zachary/workspace/kong-ee
 
 ~ $ make -f ~/workspace/release-helper/Makefile CHANGELOG_VERSION=3.6.0.0 generate-ee
+
+~ $ git mv changelog/unreleased changelog/3.6.0.0
+~ $ mkdir -p changelog/unreleased/{kong,kong-ee,kong-manager-ee,kong-portal}
+~ $ touch changelog/unreleased/{kong,kong-ee,kong-manager-ee,kong-portal}/.gitkeep
+
+~ $ git add .
+~ $ git commit -m "docs(release): genereate 3.6.0.0 changelog"
 ```
 
 ## Generate CE changelog
@@ -30,6 +43,13 @@ Get into the local repo directory, and run commands below.
 /Users/zachary/workspace/kong
 
 ~ $ make -f ~/workspace/release-helper/Makefile CHANGELOG_VERSION=3.6.0 generate-ce
+
+~ $ git mv changelog/unreleased changelog/3.6.0
+~ $ mkdir -p changelog/unreleased/{kong,kong-manager}
+~ $ touch changelog/unreleased/{kong,kong-manager}/.gitkeep
+
+~ $ git add .
+~ $ git commit -m "docs(release): genereate 3.6.0 changelog"
 ```
 
 # Retrieve PRs
