@@ -57,6 +57,7 @@ generate-ce:
 			--title Kong \
 			--github-issue-repo Kong/kong \
 			--github-api-repo Kong/kong \
+			--with-jiras \
 			>> changelog/$(CHANGELOG_FOLDER)/$(CHANGELOG_VERSION).md; \
     fi
 	@if [ -d "changelog/$(CHANGELOG_FOLDER)/kong-manager" ]; then \
@@ -66,6 +67,7 @@ generate-ce:
 			--title Kong-Manager \
 			--github-issue-repo Kong/kong-manager \
 			--github-api-repo Kong/kong \
+			--with-jiras \
 			>> changelog/$(CHANGELOG_FOLDER)/$(CHANGELOG_VERSION).md; \
     fi
 	@echo "Successfully genreate changelog changelog/$(CHANGELOG_FOLDER)/$(CHANGELOG_VERSION).md"
