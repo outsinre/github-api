@@ -38,6 +38,8 @@ Get into the local repo directory, and run commands below.
 
 ## Generate CE changelog
 
+Please do not cherry-pick this PR to EE side.
+
 ```bash
 ~ $ pwd
 /Users/zachary/workspace/kong
