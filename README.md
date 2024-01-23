@@ -61,11 +61,11 @@ Given two arbitrary revisions, list commits, PRs and PRs without changelog.
 ```bash
 ~ $ verify-changelog -h
 
-~ $ verify-changelog --org-repo kong/kong-ee --base-commit 2.8.4.5 --head-commit next/2.8.x.x
+~ $ verify-changelog --org-repo kong/kong-ee --base-commit 2.8.4.5 --head-commit 2.8.4.6
 Org Repo: kong/kong-ee
 Base Commit: 2.8.4.5
-Head Commit: next/2.8.x.x
-Comparing between '2.8.4.5' and 'next/2.8.x.x'
+Head Commit: 2.8.4.6
+Comparing between '2.8.4.5' and '2.8.4.6'
 Number of commits: 20
 
 PR list:
