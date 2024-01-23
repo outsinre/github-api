@@ -56,27 +56,27 @@ Please do not cherry-pick this PR to EE side.
 
 # Retrieve PRs
 
-Given two arbitrary revisions, list commits, PRs and PRs without changelog.
+Given two arbitrary revisions, list commits, PRs, PRs without changelog and PRs without the 'cherry-pick kong-ee' label.
 
 ```bash
 ~ $ verify-prs -h
 
-~ $ verify-prs --org-repo kong/kong-ee --base-commit 2.8.4.5 --head-commit 2.8.4.6
+~ $ verify-prs --org-repo kong/kong --base-commit 3.4.0 --head-commit 3.5.0
 Org Repo: kong/kong
-Base Commit: 3.5.0
-Head Commit: HEAD
+Base Commit: 3.4.0
+Head Commit: 3.5.0
 
-comparing between '3.5.0' and 'HEAD'
+comparing between '3.4.0' and '3.5.0'
 number of commits: 280
 number of pages: 6
 commits per page: 50
 
 PRs:
-https://github.com/Kong/kong-ee/pull/7414
+https://github.com/Kong/kong/pull/7414
 ...
 
 PRs without changelog:
-https://github.com/Kong/kong-ee/pull/7413
+https://github.com/Kong/kong/pull/7413
 ...
 
 PRs without cherry-pick label:
