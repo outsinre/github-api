@@ -18,7 +18,7 @@ function die () {
 function clean_up () {
     local st
     st=$?
-    warn "$0 is terminated" "output dir $out_dir removed"
+    warn "WARNING: $0 is terminated". "output dir $out_dir removed"
     rm -rf "$out_dir"
     exit $st
 }
@@ -30,25 +30,27 @@ function show_help () {
 Version: 0.1
  Author: Zachary Hu (zhucac AT outlook.com)
  Script: Compare between two revisions (e.g. release tags) and output commits, pull requests and pull requests without changelog.
-  Usage: ${prg} --org-repo kong/kong-ee --base-commit 3.4.2.0 --head-commit 3.4.2.1 [-v]
+  Usage: ${prg} --org-repo kong/kong-ee --base-commit 3.4.3.2 --head-commit 3.4.3.3 [-v]
 
-         ORG_REPO=kong/kong-ee BASE_COMMIT=3.4.2.0 HEAD_COMMIT=3.4.2.1 $prg
+         ORG_REPO=kong/kong-ee BASE_COMMIT=3.4.3.2 HEAD_COMMIT=3.4.3.3 $prg
 EOF
 }
 
 function set_globals () {
     ORG_REPO="${ORG_REPO:-kong/kong-ee}"
-    BASE_COMMIT="${BASE_COMMIT:-3.4.2.0}"
-    HEAD_COMMIT="${HEAD_COMMIT:-next/3.4.x.x}"
+    BASE_COMMIT="${BASE_COMMIT:-3.4.3.2}"
+    HEAD_COMMIT="${HEAD_COMMIT:-3.4.3.3}"
 
     verbose=0
     out_dir=$(mktemp -dt output)
     commits_file="${out_dir}/commits.txt"
     prs_file="${out_dir}/prs.txt"
     prs_no_changelog_file="${out_dir}/no_changelog_prs.txt"
+    prs_no_cherrypick_file="${out_dir}/no_cherrypick_prs.txt"
 
-    per_page=50
+    per_page=100
     num_of_pages=1
+    bulk=15
 }
 
 function parse_args () {
@@ -109,7 +111,7 @@ function parse_args () {
                 break
                 ;;
             (-?*)
-                warn "WARNING: unknown option (ignored): $1."
+                warn "WARNING: unknown option (ignored): $1"
                 ;;
             (*)
                 break
@@ -124,16 +126,16 @@ function prepare_args () {
     parse_args "$@"
 
     if [[ -z "${ORG_REPO:+x}" ]] ; then
-        warn "ORG_REPO must be provided."
+        warn "WARNING: ORG_REPO must be provided"
     fi
     if [[ -z "${BASE_COMMIT:+x}" ]] ; then
-        warn "BASE_COMMIT must be provided."
+        warn "WARNING: BASE_COMMIT must be provided"
     fi
     if [[ -z "${HEAD_COMMIT:+x}" ]] ; then
-        warn "HEAD_COMMIT must be provided."
+        warn "WARNING: HEAD_COMMIT must be provided"
     fi
     if [[ -z "${GITHUB_TOKEN:+x}" ]] ; then
-        warn "GITHUB_TOKEN must be provided."
+        warn "WARNING: GITHUB_TOKEN must be provided"
     fi
 
     printf '%s\n' \
@@ -169,6 +171,8 @@ function get_num_pages_commits () {
 }
 
 function get_commits_prs () {
+    get_num_pages_commits
+    printf 'number of pages: %s\n' "$num_of_pages"
     printf 'commits per page: %s\n' "$per_page"
 
     printf '%s\n' "" "PRs:"
@@ -205,6 +209,26 @@ function get_commits_prs () {
     sort -uo "$prs_file" "$prs_file"
 }
 
+function check_pr_changelog () {
+    if [[ -z "${1:+x}" ]] ; then return ; fi
+
+    local changelog_pattern="changelog/unreleased/kong*/*.yml"
+    local req_url="https://api.github.com/repos/${ORG_REPO}/pulls/PR_NUMBER/files"
+    local pr_number="${1##https*/}"
+    req_url="${req_url/PR_NUMBER/$pr_number}"
+    mapfile -t < <( curl -sSL \
+                         -H "Accept: application/vnd.github+json" \
+                         -H "Authorization: Bearer ${GITHUB_TOKEN}" \
+                         -H "X-GitHub-Api-Version: 2022-11-28" \
+                         "$req_url" | jq -r '.[].filename' )
+
+    local has_changelog=0
+    for f in "${MAPFILE[@]}" ; do
+        if [[ "$f" == ${changelog_pattern} ]] ; then has_changelog=1; break; fi
+    done
+    if ! (( "$has_changelog" )) ; then echo "$1" | tee -a "$prs_no_changelog_file" ; fi
+}
+
 function check_changelog () {
     local in_fd
     if [[ -f "$1" ]] ; then
@@ -214,30 +238,65 @@ function check_changelog () {
         warn "WARNING: $1 not a valid file. Read from stdin -"
     fi
 
-    local changelog_pattern="changelog/unreleased/kong*/*.yml"
-    local req_url
-    local pr_number
-    local has_changelog
     echo -e "\nPRs without changelog:"
-    while read -r -u "$in_fd" ; do
-        req_url="https://api.github.com/repos/${ORG_REPO}/pulls/PR_NUMBER/files"
-        pr_number="${REPLY##https*/}"
-        req_url="${req_url/PR_NUMBER/$pr_number}"
-        mapfile -t < <( curl -sSL \
-                             -H "Accept: application/vnd.github+json" \
-                             -H "Authorization: Bearer ${GITHUB_TOKEN}" \
-                             -H "X-GitHub-Api-Version: 2022-11-28" \
-                             "$req_url" | jq -r '.[].filename' )
-
-        has_changelog=1
-        for f in "${MAPFILE[@]}" ; do
-            if [[ "$f" == ${changelog_pattern} ]] ; then has_changelog=0; break; fi
-        done
-        if [[ "$has_changelog" -eq 1 ]] ; then echo "$REPLY" | tee -a "$prs_no_changelog_file" ; fi
-    done
-    echo
+    export ORG_REPO="$ORG_REPO" prs_no_changelog_file="$prs_no_changelog_file"
+    export -f check_pr_changelog
+    if type parallel >/dev/null 2>&1 ; then
+        parallel check_pr_changelog '{}' <"$1"
+    else
+        warn "WARNING: GNU parallel is not available, fallback to xargs"
+        <"$1" xargs -P "$bulk" -n1 -I'{}' bash -c 'check_pr_changelog "$@"' _ '{}'
+    fi
+    sort -uo "$prs_no_changelog_file" "$prs_no_changelog_file"
 
     : ${in_fd}<&-
+}
+
+function check_pr_ce2ee () {
+    if [[ -z "${1:+x}" ]] ; then return ; fi
+
+    local label_pattern="cherry-pick kong-ee"
+    local req_url="https://api.github.com/repos/kong/kong/issues/PR_NUMBER/labels"
+    local pr_number="${1##https://*/}"
+    req_url="${req_url/PR_NUMBER/$pr_number}"
+    mapfile -t < <( curl -sSL \
+                         -H "Accept: application/vnd.github+json" \
+                         -H "Authorization: Bearer ${GITHUB_TOKEN}" \
+                         -H "X-GitHub-Api-Version: 2022-11-28" \
+                         "$req_url" | jq -r '.[].name' )
+
+    local has_cherrypick=0
+    for l in "${MAPFILE[@]}" ; do
+        if [[ "$l" == ${label_pattern} ]] ; then has_cherrypick=1; break; fi
+    done
+    if ! (( "$has_cherrypick" )) ; then echo "$1" | tee -a "$prs_no_cherrypick_file" ; fi
+}
+
+function check_ce2ee () {
+    local in_fd
+    if [[ -f "$1" ]] ; then
+        : {in_fd}<"$1"
+    else
+        : {in_fd}<&0
+        warn "WARNING: $1 not a valid file. Read from stdin -"
+    fi
+
+    echo -e "\nPRs without cherry-pick label:"
+    if [[ "$ORG_REPO" != "kong/kong" && "$ORG_REPO" != "Kong/kong" ]] ; then
+        warn "WARNING: skip cherry-pick on repo $ORG_REPO"
+        touch "$prs_no_cherrypick_file"
+        return
+    fi
+
+    export ORG_REPO="$ORG_REPO" prs_no_cherrypick_file="$prs_no_cherrypick_file"
+    export -f check_pr_ce2ee
+    if type parallel >/dev/null 2>&1 ; then
+        parallel check_pr_ce2ee '{}' <"$1"
+    else
+        warn "WARNING: GNU parallel is not available, fallback to xargs"
+        <"$1" xargs -P "$bulk" -n1 -I'{}' bash -c 'check_pr_ce2ee "$@"' _ '{}'
+    fi
+    sort -uo "$prs_no_cherrypick_file" "$prs_no_cherrypick_file"
 }
 
 function main () {
@@ -249,20 +308,20 @@ function main () {
 
     printf '%s\n' "" "comparing between '${BASE_COMMIT}' and '${HEAD_COMMIT}'"
 
-    get_num_pages_commits
-    printf 'number of pages: %s\n' "$num_of_pages"
-
     get_commits_prs
 
     check_changelog "$prs_file"
 
-    printf '%s\n' \
+    check_ce2ee "$prs_file"
+
+    printf '%s\n' "" \
            "commits: $commits_file" \
            "pull requests: $prs_file" \
            "pull requests without changelog: $prs_no_changelog_file" \
+           "pull requests without cherry-pick: $prs_no_cherrypick_file" \
            "" "Remeber to remove $out_dir"
 
     trap "" EXIT
 }
 
-if [[ "$#" -ne 0 ]] ; then main "$@" ; else show_help ; fi
+if (( "$#" )) ; then main "$@" ; else show_help ; fi
