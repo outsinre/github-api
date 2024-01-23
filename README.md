@@ -60,6 +60,12 @@ Given two arbitrary revisions, list commits, PRs, PRs without changelog and PRs 
 
 ```bash
 ~ $ verify-prs -h
+Version: 0.1
+ Author: Zachary Hu (zhucac AT outlook.com)
+ Script: Compare between two revisions (e.g. release tags) and output commits, pull requests and pull requests without changelog.
+  Usage: verify-prs --org-repo kong/kong-ee --base-commit 3.4.3.2 --head-commit 3.4.3.3 [-v]
+
+         ORG_REPO=kong/kong-ee BASE_COMMIT=3.4.3.2 HEAD_COMMIT=3.4.3.3 verify-prs
 
 ~ $ verify-prs --org-repo kong/kong --base-commit 3.4.0 --head-commit 3.5.0
 Org Repo: kong/kong
