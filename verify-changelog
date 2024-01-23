@@ -5,7 +5,8 @@ function warn () {
 }
 
 function die () {
-    local st=$?
+    local st
+    st=$?
     case $2 in
         (*[^0-9]*|'') : ;;
         (*) st=$2 ;;
@@ -15,21 +16,23 @@ function die () {
 }
 
 function clean_up () {
-    local st=$?
+    local st
+    st=$?
     warn "$0 is terminated" "output dir $out_dir removed"
     rm -rf "$out_dir"
     exit $st
 }
 
 function show_help () {
+    local prg
     prg=$(basename "$0")
     cat <<-EOF
 Version: 0.1
  Author: Zachary Hu (zhucac AT outlook.com)
  Script: Compare between two revisions (e.g. release tags) and output commits, pull requests and pull requests without changelog.
-  Usage: ${prg} --org-repo kong/kong-ee --base-commit 3.4.2.0 --head-commit next/3.4.x.x [-v]
+  Usage: ${prg} --org-repo kong/kong-ee --base-commit 3.4.2.0 --head-commit 3.4.2.1 [-v]
 
-         ORG_REPO=kong/kong-ee BASE_COMMIT=3.4.2.0 HEAD_COMMIT=next/3.4.x.x $prg
+         ORG_REPO=kong/kong-ee BASE_COMMIT=3.4.2.0 HEAD_COMMIT=3.4.2.1 $prg
 EOF
 }
 
@@ -43,6 +46,9 @@ function set_globals () {
     commits_file="${out_dir}/commits.txt"
     prs_file="${out_dir}/prs.txt"
     prs_no_changelog_file="${out_dir}/no_changelog_prs.txt"
+
+    per_page=50
+    num_of_pages=1
 }
 
 function parse_args () {
@@ -129,11 +135,74 @@ function prepare_args () {
     if [[ -z "${GITHUB_TOKEN:+x}" ]] ; then
         warn "GITHUB_TOKEN must be provided."
     fi
-    
+
     printf '%s\n' \
            "Org Repo: ${ORG_REPO}" \
            "Base Commit: ${BASE_COMMIT}" \
            "Head Commit: ${HEAD_COMMIT}"
+}
+
+function get_num_pages_commits () {
+    local paged_response
+    paged_response=$( curl -i -sSL \
+                           -H "Accept: application/vnd.github+json" \
+                           -H "X-GitHub-Api-Version: 2022-11-28" \
+                           -H "Authorization: Bearer ${GITHUB_TOKEN}" \
+                           "https://api.github.com/repos/${ORG_REPO}/compare/${BASE_COMMIT}...${HEAD_COMMIT}?per_page=${per_page}" )
+
+    local link_header
+    link_header=$( awk '/^link:/ { print; exit }' <<< "$paged_response" )
+    IFS="," read -ra links <<< "$link_header"
+
+    local regex='[^_](page=([0-9]+)).*rel="last"'
+    for link in "${links[@]}" ; do
+        if [[ "$link" =~ $regex ]] ; then
+            num_of_pages="${BASH_REMATCH[2]}"
+            break
+        fi
+    done
+
+    local total_commits
+    total_commits=$( awk 'BEGIN { FS="[[:space:]]+|," } /total_commits/ { print $3; exit }' <<< "$paged_response" )
+    printf 'number of commits: %s\n' "$total_commits"
+
+}
+
+function get_commits_prs () {
+    printf 'commits per page: %s\n' "$per_page"
+
+    printf '%s\n' "" "PRs:"
+    for i in $( seq 1 "${num_of_pages}" ) ; do
+        mapfile -t < <( curl -sSL \
+                             -H "Accept: application/vnd.github+json" \
+                             -H "X-GitHub-Api-Version: 2022-11-28" \
+                             -H "Authorization: Bearer ${GITHUB_TOKEN}" \
+                             "https://api.github.com/repos/${ORG_REPO}/compare/${BASE_COMMIT}...${HEAD_COMMIT}?page=${i}&per_page=${per_page}" | \
+                            jq -r '.commits[].sha' )
+
+        local max_per_request=17
+        local BASE_Q="repo:${ORG_REPO}%20type:pr%20is:merged"
+        local full_q="$BASE_Q"
+        local count=0
+        for commit in "${MAPFILE[@]}" ; do
+            printf '%s\n' "${commit:0:9}" >> "$commits_file"
+
+            full_q="${full_q}%20${commit:0:9}"
+            count=$((count+1))
+
+            if ! (( count % max_per_request )) || test "$count" -eq "$per_page" ; then
+                curl -sSL \
+                     -H "Accept: application/vnd.github+json" \
+                     -H "X-GitHub-Api-Version: 2022-11-28" \
+                     -H "Authorization: Bearer ${GITHUB_TOKEN}" \
+                     "https://api.github.com/search/issues?q=$full_q" | jq -r '.items[].html_url' | tee -a "$prs_file"
+
+                full_q="$BASE_Q"
+            fi
+        done
+    done
+
+    sort -uo "$prs_file" "$prs_file"
 }
 
 function check_changelog () {
@@ -144,7 +213,7 @@ function check_changelog () {
         : {in_fd}<&0
         warn "WARNING: $1 not a valid file. Read from stdin -"
     fi
-    
+
     local changelog_pattern="changelog/unreleased/kong*/*.yml"
     local req_url
     local pr_number
@@ -173,51 +242,24 @@ function check_changelog () {
 
 function main () {
     set -Eeo pipefail
-    trap clean_up SIGABRT SIGQUIT SIGHUP SIGINT    # Ctrl-C
+    trap clean_up SIGABRT SIGQUIT SIGHUP SIGINT
 
     set_globals
     prepare_args "$@"
 
-    printf '%s\n' "Comparing between '${BASE_COMMIT}' and '${HEAD_COMMIT}'"
-    mapfile -t < <( curl -sSL \
-                     -H "Accept: application/vnd.github+json" \
-                     -H "X-GitHub-Api-Version: 2022-11-28" \
-                     -H "Authorization: Bearer ${GITHUB_TOKEN}" \
-                     "https://api.github.com/repos/${ORG_REPO}/compare/${BASE_COMMIT}...${HEAD_COMMIT}" | \
-                    jq -r '.commits[].sha' )
+    printf '%s\n' "" "comparing between '${BASE_COMMIT}' and '${HEAD_COMMIT}'"
 
-    num_of_commits="${#MAPFILE[@]}"
-    printf '%s\n' "Number of commits: ${num_of_commits}"
-    printf '%s\n' "" "PR list:"
+    get_num_pages_commits
+    printf 'number of pages: %s\n' "$num_of_pages"
 
-    max_per_request=17
-    count=0
-    BASE_Q="repo:${ORG_REPO}%20type:pr%20is:merged"
-    full_q="$BASE_Q"
-    for commit in "${MAPFILE[@]}" ; do
-        printf '%s\n' "${commit:0:9}" >> "$commits_file"
-
-        full_q="${full_q}%20${commit:0:9}"
-        count=$((count+1))
-
-        if ! (( count % max_per_request )) || test "$count" -eq "$num_of_commits" ; then
-            curl -sSL \
-                 -H "Accept: application/vnd.github+json" \
-                 -H "X-GitHub-Api-Version: 2022-11-28" \
-                 -H "Authorization: Bearer ${GITHUB_TOKEN}" \
-                 "https://api.github.com/search/issues?q=$full_q" | jq -r '.items[].html_url' | tee -a "$prs_file"
-    
-                 full_q="$BASE_Q"
-        fi
-    done
-    sort -uo "$prs_file" "$prs_file"
+    get_commits_prs
 
     check_changelog "$prs_file"
 
     printf '%s\n' \
-           "Commits: $commits_file" \
-           "Pull Requests: $prs_file" \
-           "Pull Requests without changelog: $prs_no_changelog_file" \
+           "commits: $commits_file" \
+           "pull requests: $prs_file" \
+           "pull requests without changelog: $prs_no_changelog_file" \
            "" "Remeber to remove $out_dir"
 
     trap "" EXIT
