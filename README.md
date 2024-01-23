@@ -58,6 +58,14 @@ Please do not cherry-pick this PR to EE side.
 
 Given two arbitrary revisions, list commits, PRs, PRs without changelog and PRs without the 'cherry-pick kong-ee' label.
 
+Ensure `GITHUB_TOKEN` is set in your environment.
+
+```bash
+~ $ echo $GITHUB_TOKEN
+```
+
+Run the script.
+
 ```bash
 ~ $ verify-prs -h
 Version: 0.1
