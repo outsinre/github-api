@@ -62,13 +62,16 @@ Given two arbitrary revisions, list commits, PRs and PRs without changelog.
 ~ $ verify-changelog -h
 
 ~ $ verify-changelog --org-repo kong/kong-ee --base-commit 2.8.4.5 --head-commit 2.8.4.6
-Org Repo: kong/kong-ee
-Base Commit: 2.8.4.5
-Head Commit: 2.8.4.6
-Comparing between '2.8.4.5' and '2.8.4.6'
-Number of commits: 20
+Org Repo: kong/kong
+Base Commit: 3.5.0
+Head Commit: HEAD
 
-PR list:
+comparing between '3.5.0' and 'HEAD'
+number of commits: 280
+number of pages: 6
+commits per page: 50
+
+PRs:
 https://github.com/Kong/kong-ee/pull/7414
 ...
 
