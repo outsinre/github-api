@@ -64,7 +64,7 @@ Ensure `GITHUB_TOKEN` is set in your environment.
 ~ $ echo $GITHUB_TOKEN
 ```
 
-Run the script.
+Run the script. Please set the `--head-commit` to branch name like `next/3.4.x.x` if it is not yet released.
 
 ```bash
 ~ $ verify-prs -h
