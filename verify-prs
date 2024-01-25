@@ -289,7 +289,7 @@ function check_cross_reference () {
                          -H "Accept: application/vnd.github+json" \
                          -H "Authorization: Bearer ${GITHUB_TOKEN}" \
                          -H "X-GitHub-Api-Version: 2022-11-28" \
-                         "$req_url" )
+                         "${req_url}?per_page=${per_page}" )
 
     if ! jq -er '.[].source.issue | select((.pull_request != null) and (.pull_request.html_url | ascii_downcase | contains("kong/kong-ee")) and (.title | ascii_downcase | contains("cherry"))) | [.pull_request.html_url, .title] | @tsv' <<< "$json_response" >/dev/null ; then
         echo "$1" | tee -a "$prs_no_cross_reference_file"
