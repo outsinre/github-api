@@ -118,9 +118,6 @@ PRs without cross-referenced EE PRs:
 https://github.com/Kong/kong/pull/11304
 ...
 
-PRs without cross-referenced EE PRs:
-https://github.com/Kong/kong/pull/12355
-
 Commits: /var/folders/wc/fnkx5qmx61l_wx5shysmql5r0000gn/T/outputXXX.JEkGD8AO/commits.txt
 PRs: /var/folders/wc/fnkx5qmx61l_wx5shysmql5r0000gn/T/outputXXX.JEkGD8AO/prs.txt
 PRs without changelog: /var/folders/wc/fnkx5qmx61l_wx5shysmql5r0000gn/T/outputXXX.JEkGD8AO/prs_no_changelog.txt
