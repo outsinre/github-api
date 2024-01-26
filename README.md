@@ -68,14 +68,27 @@ Ensure `GITHUB_TOKEN` is set in your environment.
 ~ $ echo $GITHUB_TOKEN
 ```
 
-Run the script. Both `--base-commit` and `--head-commit` can be set to branch names like `master`.
+Run the script. Both `--base-commit` and `--head-commit` can be set to branch names.
 
 ```bash
 ~ $ verify-prs -h
 Version: 0.1
  Author: Zachary Hu (zhucac AT outlook.com)
- Script: Compare between two revisions (e.g. tags and branches) and output commits, PRs, PRs without changelog and PRs without CE2EE (experimental).
-  Usage: verify-prs --org-repo kong/kong-ee --base-commit 3.4.2.0 --head-commit 3.4.2.1 [-v]
+ Script: Compare between two revisions (e.g. tags and branches), and output
+         commits, PRs, PRs without changelog and
+         optionally CE PRs without CE2EE (experimental).
+
+  Usage: verify-prs -h
+
+         -v, --verbose       Print debug info.
+
+         --strict-filter     When checking if a CE PR is synced to EE or not,
+                             more strict filters are applied
+
+         --bulk N            Number of jobs ran concurrency. Default is 5.
+                             Adjust this value to your CPU cores.
+
+         verify-prs --org-repo kong/kong-ee --base-commit 3.4.2.0 --head-commit 3.4.2.1 [--strict-filter] [--bulk 5] [-v]
 
          ORG_REPO=kong/kong-ee BASE_COMMIT=3.4.2.0 HEAD_COMMIT=3.4.2.1 verify-prs
 
@@ -101,16 +114,18 @@ PRs without 'cherry-pick kong-ee' label:
 https://github.com/Kong/kong/pull/11721
 ...
 
-PRs without cross-referenced EE PRs with 'cherry' in the title:
+PRs without cross-referenced EE PRs:
 https://github.com/Kong/kong/pull/11304
 ...
 
-commits: /var/folders/wc/fnkx5qmx61l_wx5shysmql5r0000gn/T/output.K35ATb9k/commits.txt
-PRs: /var/folders/wc/fnkx5qmx61l_wx5shysmql5r0000gn/T/output.K35ATb9k/prs.txt
-PRs without changelog: /var/folders/wc/fnkx5qmx61l_wx5shysmql5r0000gn/T/output.K35ATb9k/prs_no_changelog.txt.txt
-CE PRs without 'cherry-pick kong-ee' label: /var/folders/wc/fnkx5qmx61l_wx5shysmql5r0000gn/T/output.K35ATb9k/prs_no_cherrypick_label.txt
-CE PRs without cross-referenced EE PRs with 'cherry' in the title: /var/folders/wc/fnkx5qmx61l_wx5shysmql5r0000gn/T/output.K35ATb9k/prs_no_cross_reference.txt
-CE PRs without CE2EE: /var/folders/wc/fnkx5qmx61l_wx5shysmql5r0000gn/T/output.K35ATb9k/prs_no_ce2ee.txt
+PRs without cross-referenced EE PRs:
+https://github.com/Kong/kong/pull/12355
 
-Remeber to remove /var/folders/wc/fnkx5qmx61l_wx5shysmql5r0000gn/T/output.K35ATb9k
+Commits: /var/folders/wc/fnkx5qmx61l_wx5shysmql5r0000gn/T/outputXXX.JEkGD8AO/commits.txt
+PRs: /var/folders/wc/fnkx5qmx61l_wx5shysmql5r0000gn/T/outputXXX.JEkGD8AO/prs.txt
+PRs without changelog: /var/folders/wc/fnkx5qmx61l_wx5shysmql5r0000gn/T/outputXXX.JEkGD8AO/prs_no_changelog.txt
+CE PRs without cherry-pick label: /var/folders/wc/fnkx5qmx61l_wx5shysmql5r0000gn/T/outputXXX.JEkGD8AO/prs_no_cherrypick_label.txt
+CE PRs without referenced EE cherry-pick PRs: /var/folders/wc/fnkx5qmx61l_wx5shysmql5r0000gn/T/outputXXX.JEkGD8AO/prs_no_cross_reference.txt
+
+Remeber to remove /var/folders/wc/fnkx5qmx61l_wx5shysmql5r0000gn/T/outputXXX.JEkGD8AO
 ```

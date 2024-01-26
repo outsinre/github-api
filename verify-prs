@@ -26,8 +26,21 @@ function show_help () {
     cat <<-EOF
 Version: 0.1
  Author: Zachary Hu (zhucac AT outlook.com)
- Script: Compare between two revisions (e.g. tags and branches) and output commits, PRs, PRs without changelog and PRs without CE2EE (experimental).
-  Usage: ${prg} --org-repo kong/kong-ee --base-commit 3.4.2.0 --head-commit 3.4.2.1 [-v]
+ Script: Compare between two revisions (e.g. tags and branches), and output
+         commits, PRs, PRs without changelog and
+         optionally CE PRs without CE2EE (experimental).
+
+  Usage: ${prg} -h
+
+         -v, --verbose       Print debug info.
+
+         --strict-filter     When checking if a CE PR is synced to EE or not,
+                             more strict filters are applied
+
+         --bulk N            Number of jobs ran concurrency. Default is 5.
+                             Adjust this value to your CPU cores.
+
+         ${prg} --org-repo kong/kong-ee --base-commit 3.4.2.0 --head-commit 3.4.2.1 [--strict-filter] [--bulk 5] [-v]
 
          ORG_REPO=kong/kong-ee BASE_COMMIT=3.4.2.0 HEAD_COMMIT=3.4.2.1 $prg
 EOF
@@ -39,17 +52,22 @@ function set_globals () {
     HEAD_COMMIT="${HEAD_COMMIT:-3.4.2.1}"
 
     verbose=0
+    STRICT_FILTER=0
+
+    BULK=5
+    USER_AGENT="Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/121.0.0.0 Safari/537.36"
+
     out_dir=$(mktemp -dt outputXXX)
-    commits_file="${out_dir}/commits.txt"
-    prs_file="${out_dir}/prs.txt"
-    prs_no_changelog_file="${out_dir}/prs_no_changelog.txt"
-    prs_no_cherrypick_label_file="${out_dir}/prs_no_cherrypick_label.txt"
-    prs_no_cross_reference_file="${out_dir}/prs_no_cross_reference.txt"
-    prs_no_ce2ee_file="${out_dir}/prs_no_ce2ee.txt"
+    commits_file="${out_dir}/commits.txt" ; touch "$commits_file"
+    prs_file="${out_dir}/prs.txt" ; touch "$prs_file"
+    prs_no_changelog_file="${out_dir}/prs_no_changelog.txt" ; touch "$prs_no_changelog_file"
+    prs_no_cherrypick_label_file="${out_dir}/prs_no_cherrypick_label.txt" ; touch "$prs_no_cherrypick_label_file"
+    prs_no_cross_reference_file="${out_dir}/prs_no_cross_reference.txt" ; touch "$prs_no_cross_reference_file"
+
+    num_of_commits=0
 
     per_page=100
     num_of_pages=1
-    bulk=15
 }
 
 function parse_args () {
@@ -61,7 +79,21 @@ function parse_args () {
                 ;;
             (-v|--verbose)
                 set -x
-                verbose=$((verbose + 1))
+                verbose=$(( verbose + 1 ))
+                ;;
+            (--org-repo)
+                if [[ -n "$2" ]] ; then
+                    ORG_REPO="$2"
+                else
+                    die 'ERROR: "--org-repo" requires a non-empty option argument.' 2
+                fi
+                shift
+                ;;
+            (--org-repo=*)
+                ORG_REPO="${1#--org-repo=}"
+                if [[ -z "$ORG_REPO" ]] ; then
+                    die 'ERROR: "--org-repo=" requires a non-empty option argument followed immediately.' 2
+                fi
                 ;;
             (--base-commit)
                 if [[ -n "$2" ]] ; then
@@ -91,19 +123,22 @@ function parse_args () {
                     die 'ERROR: "--head-commit=" requires a non-empty option argument followed immediately.' 2
                 fi
                 ;;
-            (--org-repo)
+            (--bulk)
                 if [[ -n "$2" ]] ; then
-                    ORG_REPO="$2"
+                    BULK="$2"
                 else
-                    die 'ERROR: "--org-repo" requires a non-empty option argument.' 2
+                    die 'ERROR: "--bulk" requires a non-empty option argument.' 2
                 fi
                 shift
                 ;;
-            (--org-repo=*)
-                ORG_REPO="${1#--org-repo=}"
-                if [[ -z "$ORG_REPO" ]] ; then
-                    die 'ERROR: "--org-repo=" requires a non-empty option argument followed immediately.' 2
+            (--bulk=*)
+                BULK="${1#--bulk=}"
+                if [[ -z "$BULK" ]] ; then
+                    die 'ERROR: "--bulk=" requires a non-empty option argument followed immediately.' 2
                 fi
+                ;;
+            (--strict-filter)
+                STRICT_FILTER=1
                 ;;
             (--)
                 shift
@@ -136,6 +171,9 @@ function prepare_args () {
     if [[ -z "${GITHUB_TOKEN:+x}" ]] ; then
         warn "WARNING: GITHUB_TOKEN must be provided"
     fi
+    if (( BULK >= 8 )) ; then
+        warn "WARNING: job concurrency $BULK is too high. May reach the rate limit of GitHub API."
+    fi
 
     printf '%s\n' \
            "Org Repo: ${ORG_REPO}" \
@@ -144,22 +182,22 @@ function prepare_args () {
 }
 
 function get_num_pages_commits () {
-    local paged_response
-
-    paged_response=$( curl -i -sSL \
+    local first_paged_response
+    first_paged_response=$( curl -i -sSL \
+                           -H "User-Agent: ${USER_AGENT}" \
                            -H "Accept: application/vnd.github+json" \
                            -H "X-GitHub-Api-Version: 2022-11-28" \
                            -H "Authorization: Bearer ${GITHUB_TOKEN}" \
-                           "https://api.github.com/repos/${ORG_REPO}/compare/${BASE_COMMIT}...${HEAD_COMMIT}?per_page=${per_page}" )
+                           "https://api.github.com/repos/${ORG_REPO}/compare/${BASE_COMMIT}...${HEAD_COMMIT}?page=1&per_page=${per_page}" )
 
     local status_line
-    status_line=$( sed -n 1p <<< "$paged_response" )
+    status_line=$( sed -n 1p <<< "$first_paged_response" )
     if ! [[ "$status_line" =~ 200 ]] ; then
         die 'ERROR: cannot request GitHub API. Please check arguments or try option "-v"' 2
     fi
 
     local link_header
-    link_header=$( awk '/^link:/ { print; exit }' <<< "$paged_response" )
+    link_header=$( awk '/^link:/ { print; exit }' <<< "$first_paged_response" )
     IFS="," read -ra links <<< "$link_header"
 
     local regex='[^_](page=([0-9]+)).*rel="last"'
@@ -170,9 +208,8 @@ function get_num_pages_commits () {
         fi
     done
 
-    local total_commits
-    total_commits=$( awk 'BEGIN { FS="[[:space:]]+|," } /total_commits/ { print $3; exit }' <<< "$paged_response" )
-    printf 'number of commits: %s\n' "$total_commits"
+    num_of_commits=$( awk 'BEGIN { FS="[[:space:]]+|," } /total_commits/ { print $3; exit }' <<< "$first_paged_response" )
+    printf 'number of commits: %s\n' "$num_of_commits"
 
 }
 
@@ -184,6 +221,7 @@ function get_commits_prs () {
     printf '%s\n' "" "PRs:"
     for i in $( seq 1 "${num_of_pages}" ) ; do
         mapfile -t < <( curl -sSL \
+                             -H "User-Agent: ${USER_AGENT}" \
                              -H "Accept: application/vnd.github+json" \
                              -H "X-GitHub-Api-Version: 2022-11-28" \
                              -H "Authorization: Bearer ${GITHUB_TOKEN}" \
@@ -198,10 +236,11 @@ function get_commits_prs () {
             printf '%s\n' "${commit:0:9}" >> "$commits_file"
 
             full_q="${full_q}%20${commit:0:9}"
-            count=$((count+1))
+            count=$(( count+1 ))
 
-            if ! (( count % max_per_request )) || test "$count" -eq "$per_page" ; then
+            if ! (( count % max_per_request )) || test "$count" -eq "$per_page" || test "$count" -eq "$num_of_commits" ; then
                 curl -sSL \
+                     -H "User-Agent: ${USER_AGENT}" \
                      -H "Accept: application/vnd.github+json" \
                      -H "X-GitHub-Api-Version: 2022-11-28" \
                      -H "Authorization: Bearer ${GITHUB_TOKEN}" \
@@ -223,6 +262,7 @@ function check_pr_changelog () {
     local pr_number="${1##https*/}"
     req_url="${req_url/PR_NUMBER/$pr_number}"
     mapfile -t < <( curl -sSL \
+                         -H "User-Agent: ${USER_AGENT}" \
                          -H "Accept: application/vnd.github+json" \
                          -H "Authorization: Bearer ${GITHUB_TOKEN}" \
                          -H "X-GitHub-Api-Version: 2022-11-28" \
@@ -232,30 +272,20 @@ function check_pr_changelog () {
     for f in "${MAPFILE[@]}" ; do
         if [[ "$f" == ${changelog_pattern} ]] ; then has_changelog=1; break; fi
     done
-    if ! (( "$has_changelog" )) ; then echo "$1" | tee -a "$prs_no_changelog_file" ; fi
+    if ! (( has_changelog )) ; then echo "$1" | tee -a "$prs_no_changelog_file" ; fi
 }
 
 function check_changelog () {
-    local in_fd
-    if [[ -f "$1" ]] ; then
-        : {in_fd}<"$1"
-    else
-        : {in_fd}<&0
-        warn "WARNING: $1 not a valid file. Read from stdin -"
-    fi
-
     echo -e "\nPRs without changelog:"
-    export ORG_REPO="$ORG_REPO" prs_no_changelog_file="$prs_no_changelog_file"
+    export ORG_REPO="$ORG_REPO" USER_AGENT="$USER_AGENT" prs_no_changelog_file="$prs_no_changelog_file"
     export -f check_pr_changelog
     if type parallel >/dev/null 2>&1 ; then
-        parallel check_pr_changelog '{}' <"$1"
+        parallel -j "$BULK" check_pr_changelog <"$1"
     else
         warn "WARNING: GNU 'parallel' is not available, fallback to 'xargs'"
-        <"$1" xargs -P "$bulk" -n1 -I'{}' bash -c 'check_pr_changelog "$@"' _ '{}'
+        <"$1" xargs -P "$BULK" -n1 bash -c 'check_pr_changelog "$@"' _
     fi
     sort -uo "$prs_no_changelog_file" "$prs_no_changelog_file"
-
-    : ${in_fd}<&-
 }
 
 function check_cherrypick_label () {
@@ -266,6 +296,7 @@ function check_cherrypick_label () {
     local pr_number="${1##https://*/}"
     req_url="${req_url/PR_NUMBER/$pr_number}"
     mapfile -t < <( curl -sSL \
+                         -H "User-Agent: ${USER_AGENT}" \
                          -H "Accept: application/vnd.github+json" \
                          -H "Authorization: Bearer ${GITHUB_TOKEN}" \
                          -H "X-GitHub-Api-Version: 2022-11-28" \
@@ -275,7 +306,7 @@ function check_cherrypick_label () {
     for l in "${MAPFILE[@]}" ; do
         if [[ "$l" == ${label_pattern} ]] ; then has_label=1; break; fi
     done
-    if ! (( "$has_label" )) ; then echo "$1" | tee -a "$prs_no_cherrypick_label_file" ; fi
+    if ! (( has_label )) ; then echo "$1" | tee -a "$prs_no_cherrypick_label_file" ; fi
 }
 
 function check_cross_reference () {
@@ -284,56 +315,107 @@ function check_cross_reference () {
     local req_url="https://api.github.com/repos/${ORG_REPO}/issues/PR_NUMBER/timeline"
     local pr_number="${1##https://*/}"
     req_url="${req_url/PR_NUMBER/$pr_number}"
-    local json_response
-    json_response=$( curl -sSL \
-                         -H "Accept: application/vnd.github+json" \
-                         -H "Authorization: Bearer ${GITHUB_TOKEN}" \
-                         -H "X-GitHub-Api-Version: 2022-11-28" \
-                         "${req_url}?per_page=${per_page}" )
 
-    if ! jq -er '.[].source.issue | select((.pull_request != null) and (.pull_request.html_url | ascii_downcase | contains("kong/kong-ee")) and (.title | ascii_downcase | contains("cherry"))) | [.pull_request.html_url, .title] | @tsv' <<< "$json_response" >/dev/null ; then
-        echo "$1" | tee -a "$prs_no_cross_reference_file"
+    local first_paged_response
+    first_paged_response=$( curl -i -sSL \
+                                 -H "User-Agent: ${USER_AGENT}" \
+                                 -H "Accept: application/vnd.github+json" \
+                                 -H "Authorization: Bearer ${GITHUB_TOKEN}" \
+                                 -H "X-GitHub-Api-Version: 2022-11-28" \
+                                 "${req_url}?page=1&per_page=${per_page}" )
+
+    local link_header
+    link_header=$( awk '/^link:/ { print; exit }' <<< "$first_paged_response" )
+    IFS="," read -ra links <<< "$link_header"
+
+    local count=1
+    local regex='[^_](page=([0-9]+)).*rel="last"'
+    for link in "${links[@]}" ; do
+        if [[ "$link" =~ $regex ]] ; then
+            count="${BASH_REMATCH[2]}"
+            break
+        fi
+    done
+
+    local jq_filter
+    if (( STRICT_FILTER )) ; then
+        jq_filter='.[].source.issue | select( (.pull_request != null) and
+                                              (.pull_request.html_url | ascii_downcase | contains("kong/kong-ee")) and
+                                              (.pull_request.merged_at != null) and
+                                              (.title | ascii_downcase | contains("cherry")) )
+                                    | [.pull_request.html_url, .title]
+                                    | @tsv'
+    else
+        jq_filter='.[].source.issue | select( (.pull_request != null) and
+                                              (.pull_request.html_url | ascii_downcase | contains("kong/kong-ee")) and
+                                              (.pull_request.merged_at != null) )
+                                    | [.pull_request.html_url, .title]
+                                    | @tsv'
     fi
+
+    local has_ref=0
+    local json_response
+    for i in $( seq 1 "${count}" ) ; do
+        json_response=$( curl -sSL \
+                              -H "User-Agent: ${USER_AGENT}" \
+                              -H "Accept: application/vnd.github+json" \
+                              -H "Authorization: Bearer ${GITHUB_TOKEN}" \
+                              -H "X-GitHub-Api-Version: 2022-11-28" \
+                              "${req_url}?page=${i}&per_page=${per_page}" )
+
+        if jq -er "$jq_filter" <<< "$json_response" >/dev/null
+        then
+            has_ref=1
+            break
+        fi
+    done
+
+    if ! (( has_ref )) ; then echo "$1" | tee -a "$prs_no_cross_reference_file" ; fi
 }
 
 function check_ce2ee () {
-    local in_fd
-    if [[ -f "$1" ]] ; then
-        : {in_fd}<"$1"
-    else
-        : {in_fd}<&0
-        warn "WARNING: $1 not a valid file. Read from stdin -"
-    fi
-
     if [[ "$ORG_REPO" != "kong/kong" && "$ORG_REPO" != "Kong/kong" ]] ; then
         warn "WARNING: only check CE2EE for CE repo. Skip $ORG_REPO"
-        touch "$prs_no_cherrypick_label_file" "$prs_no_cross_reference_file"
         return
     fi
 
     echo -e "\nPRs without 'cherry-pick kong-ee' label:"
-    export ORG_REPO="$ORG_REPO" prs_no_cherrypick_label_file="$prs_no_cherrypick_label_file"
+    export ORG_REPO="$ORG_REPO" USER_AGENT="$USER_AGENT" prs_no_cherrypick_label_file="$prs_no_cherrypick_label_file"
     export -f check_cherrypick_label
     if type parallel >/dev/null 2>&1 ; then
-        parallel check_cherrypick_label '{}' <"$1"
+        parallel -j "$BULK" check_cherrypick_label <"$1"
     else
         warn "WARNING: GNU 'parallel' is not available, fallback to 'xargs'"
-        <"$1" xargs -P "$bulk" -n1 -I'{}' bash -c 'check_cherrypick_label "$@"' _ '{}'
+        <"$1" xargs -P "$BULK" -n1 bash -c 'check_cherrypick_label "$@"' _
     fi
     sort -uo "$prs_no_cherrypick_label_file" "$prs_no_cherrypick_label_file"
 
-    echo -e "\nPRs without cross-referenced EE PRs with 'cherry' in the title:"
-    export ORG_REPO="$ORG_REPO" prs_no_cross_reference_file="$prs_no_cross_reference_file"
-    export -f check_cross_reference
-    if type parallel >/dev/null 2>&1 ; then
-        parallel check_cross_reference '{}' <"$1"
+    echo -e "\nPRs without cross-referenced EE PRs:"
+    if (( 0 )) ; then
+        local in_fd
+        if [[ -f "$1" ]] ; then
+            : {in_fd}<"$1"
+        else
+            : {in_fd}<&0
+            warn "WARNING: $1 not a valid file. Read from stdin -"
+        fi
+
+        while read -r -u "$in_fd" ; do
+            check_cross_reference "$REPLY"
+        done
+
+        : ${in_fd}<&-
     else
-        warn "WARNING: GNU 'parallel' is not available, fallback to 'xargs'"
-        <"$1" xargs -P "$bulk" -n1 -I'{}' bash -c 'check_cross_reference "$@"' _ '{}'
+        export ORG_REPO="$ORG_REPO" USER_AGENT="$USER_AGENT" STRICT_FILTER="$STRICT_FILTER" prs_no_cross_reference_file="$prs_no_cross_reference_file"
+        export -f check_cross_reference
+        if type parallel >/dev/null 2>&1 ; then
+            parallel -j "$BULK" check_cross_reference <"$1"
+        else
+            warn "WARNING: GNU 'parallel' is not available, fallback to 'xargs'"
+            <"$1" xargs -P "$BULK" -n1 bash -c 'check_cross_reference "$@"' _
+        fi
     fi
     sort -uo "$prs_no_cross_reference_file" "$prs_no_cross_reference_file"
-
-    comm -12 "$prs_no_cherrypick_label_file" "$prs_no_cross_reference_file" >> "$prs_no_ce2ee_file"
 }
 
 function main () {
@@ -352,12 +434,11 @@ function main () {
     check_ce2ee "$prs_file"
 
     printf '%s\n' "" \
-           "commits: $commits_file" \
+           "Commits: $commits_file" \
            "PRs: $prs_file" \
            "PRs without changelog: $prs_no_changelog_file" \
-           "CE PRs without 'cherry-pick kong-ee' label: $prs_no_cherrypick_label_file" \
-           "CE PRs without cross-referenced EE PRs with 'cherry' in the title: $prs_no_cross_reference_file" \
-           "CE PRs without CE2EE: $prs_no_ce2ee_file" \
+           "CE PRs without cherry-pick label: $prs_no_cherrypick_label_file" \
+           "CE PRs without referenced EE cherry-pick PRs: $prs_no_cross_reference_file" \
            "" "Remeber to remove $out_dir"
 
     trap '' EXIT
