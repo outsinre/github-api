@@ -10,6 +10,8 @@ Clone this repo and add it to environment variable `PATH`.
 ~ $ PATH="$(realpath .):$PATH"
 ```
 
+Please `git pull` occasionally to get updated.
+
 # Generate Changelog
 
 Enure `golang` is available on your local system.
