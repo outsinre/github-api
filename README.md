@@ -82,13 +82,16 @@ Version: 0.1
 
          -v, --verbose       Print debug info.
 
-         --strict-filter     When checking if a CE PR is synced to EE or not,
-                             more strict filters are applied
+         --strict-filter     When checking if a CE PR is synced to EE,
+                             more strict filters are applied.
 
-         --bulk N            Number of jobs ran concurrency. Default is 5.
+         --bulk N            Number of jobs ran concurrency. Default is '5'.
                              Adjust this value to your CPU cores.
 
-         verify-prs --org-repo kong/kong-ee --base-commit 3.4.2.0 --head-commit 3.4.2.1 [--strict-filter] [--bulk 5] [-v]
+         --safe-mode         When checking if a CE PR is synced to EE,
+                             check one by one. This overrides '--bulk'.
+
+         verify-prs --org-repo kong/kong-ee --base-commit 3.4.2.0 --head-commit 3.4.2.1 [--strict-filter] [--bulk 5] [--safe-mode] [-v]
 
          ORG_REPO=kong/kong-ee BASE_COMMIT=3.4.2.0 HEAD_COMMIT=3.4.2.1 verify-prs
 

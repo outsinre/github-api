@@ -34,13 +34,16 @@ Version: 0.1
 
          -v, --verbose       Print debug info.
 
-         --strict-filter     When checking if a CE PR is synced to EE or not,
-                             more strict filters are applied
+         --strict-filter     When checking if a CE PR is synced to EE,
+                             more strict filters are applied.
 
-         --bulk N            Number of jobs ran concurrency. Default is 5.
+         --bulk N            Number of jobs ran concurrency. Default is '5'.
                              Adjust this value to your CPU cores.
 
-         ${prg} --org-repo kong/kong-ee --base-commit 3.4.2.0 --head-commit 3.4.2.1 [--strict-filter] [--bulk 5] [-v]
+         --safe-mode         When checking if a CE PR is synced to EE,
+                             check one by one. This overrides '--bulk'.
+
+         ${prg} --org-repo kong/kong-ee --base-commit 3.4.2.0 --head-commit 3.4.2.1 [--strict-filter] [--bulk 5] [--safe-mode] [-v]
 
          ORG_REPO=kong/kong-ee BASE_COMMIT=3.4.2.0 HEAD_COMMIT=3.4.2.1 $prg
 EOF
@@ -53,6 +56,7 @@ function set_globals () {
 
     verbose=0
     STRICT_FILTER=0
+    SAFE_MODE=0
 
     BULK=5
     USER_AGENT="Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/121.0.0.0 Safari/537.36"
@@ -140,6 +144,9 @@ function parse_args () {
             (--strict-filter)
                 STRICT_FILTER=1
                 ;;
+            (--safe-mode)
+                SAFE_MODE=1
+                ;;
             (--)
                 shift
                 break
@@ -173,6 +180,9 @@ function prepare_args () {
     fi
     if (( BULK >= 8 )) ; then
         warn "WARNING: job concurrency $BULK is too high. May reach the rate limit of GitHub API."
+    fi
+    if (( SAFE_MODE )) ; then
+        warn "WARNING: safe mode enabled. Jobs takes longer time. Take a cup of coffee!"
     fi
 
     printf '%s\n' \
@@ -391,7 +401,7 @@ function check_ce2ee () {
     sort -uo "$prs_no_cherrypick_label_file" "$prs_no_cherrypick_label_file"
 
     echo -e "\nPRs without cross-referenced EE PRs:"
-    if (( 0 )) ; then
+    if (( SAFE_MODE )) ; then
         local in_fd
         if [[ -f "$1" ]] ; then
             : {in_fd}<"$1"
