@@ -77,8 +77,15 @@ Run the script. Both `--base-commit` and `--head-commit` can be set to branch na
 Version: 0.1
  Author: Zachary Hu (zhucac AT outlook.com)
  Script: Compare between two revisions (e.g. tags and branches), and output
-         commits, PRs, PRs without changelog and
-         optionally CE PRs without CE2EE (experimental).
+         commits, PRs, PRs without changelog and CE PRs without CE2EE (experimental).
+
+         A PR should have an associated YML file under 'changelog/unreleased', otherwise
+         it is printed for verification.
+
+         Regarding CE2EE, if a CE PR has any cross-referenced EE PRs, it is regarded synced
+         to EE. If strict mode is enabled, associated EE PRs must contain keyword 'cherry'
+         in the title. If a CE PR is labelled with 'cherry-pick kong-ee', it is regarded synced
+         to EE. If a CE PR is not synced to EE, it is printed for verification.
 
   Usage: verify-prs -h
 
@@ -87,11 +94,11 @@ Version: 0.1
          --strict-filter     When checking if a CE PR is synced to EE,
                              more strict filters are applied.
 
-         --bulk N            Number of jobs ran concurrency. Default is '5'.
-                             Adjust this value to your CPU cores.
-
          --safe-mode         When checking if a CE PR is synced to EE,
                              check one by one. This overrides '--bulk'.
+
+         --bulk N            Number of jobs ran concurrency. Default is '5'.
+                             Adjust this value to your CPU cores.
 
          verify-prs --org-repo kong/kong-ee --base-commit 3.4.2.0 --head-commit 3.4.2.1 [--strict-filter] [--bulk 5] [--safe-mode] [-v]
 
